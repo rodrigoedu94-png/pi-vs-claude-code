@@ -20,11 +20,10 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Text, type AutocompleteItem, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { spawn } from "child_process";
-import { readdirSync, readFileSync, existsSync, mkdirSync, unlinkSync, appendFileSync, writeFileSync } from "fs";
+import { readdirSync, readFileSync, existsSync, mkdirSync, unlinkSync, appendFileSync } from "fs";
 import { join, resolve } from "path";
-import { tmpdir } from "os";
 import { applyExtensionDefaults } from "./themeMap.ts";
+import { spawnPiWrapper } from "./_lib/spawnPiWrapper.ts";
 
 // ── Types ────────────────────────────────────────
 
@@ -346,36 +345,6 @@ export default function (pi: ExtensionAPI) {
 		const agentKey = state.def.name.toLowerCase().replace(/\s+/g, "-");
 		const agentSessionFile = join(sessionDir, `${agentKey}.json`);
 
-		// Windows fix v3: wrapper bash script
-		// Problema: Node 18.20+ requer shell:true para .cmd (CVE-2024-27980),
-		// mas shell:true reparseia args longos (--append-system-prompt) quebrando markdown.
-		// Solução: escrever system prompt em arquivo + wrapper .sh que lê via $(cat),
-		// spawn o wrapper via bash com args mínimos (sem chars problemáticos).
-		const ts = Date.now();
-		const tmpBase = require("os").tmpdir().replace(/\\/g, "/");
-		const spFile = `${tmpBase}/pi-sp-${state.def.name}-${ts}.md`;
-		const wrapperFile = `${tmpBase}/pi-run-${state.def.name}-${ts}.sh`;
-		const sessionPathPosix = agentSessionFile.replace(/\\/g, "/");
-
-		writeFileSync(spFile, state.def.systemPrompt, "utf-8");
-
-		// Escape task pra single-quote bash: ' -> '\''
-		const escTask = task.replace(/'/g, "'\\''");
-		const continueFlag = state.sessionFile ? "-c" : "";
-
-		const wrapper = `#!/bin/bash
-exec pi --mode json -p --no-extensions \\
-  --model '${model}' \\
-  --tools '${state.def.tools}' \\
-  --thinking off \\
-  --append-system-prompt "$(cat '${spFile}')" \\
-  --session '${sessionPathPosix}' ${continueFlag} \\
-  '${escTask}'
-`;
-		writeFileSync(wrapperFile, wrapper, { encoding: "utf-8", mode: 0o755 });
-
-		const args = [wrapperFile];
-
 		const textChunks: string[] = [];
 
 		const DEBUG_LOG = join(process.cwd(), ".pi", "agent-team-debug.log");
@@ -384,19 +353,41 @@ exec pi --mode json -p --no-extensions \\
 				appendFileSync(DEBUG_LOG, `[${new Date().toISOString()}] ${state.def.name}: ${msg}\n`);
 			} catch {}
 		};
-		logDbg(`SPAWN args: ${JSON.stringify(args)}`);
 
-		// Spawn bash com o wrapper. bash resolve pi.cmd via PATH e o wrapper
-		// usa $(cat file) pra injetar system prompt sem reparse.
-		const bashPath = process.platform === "win32"
-			? "C:/Program Files/Git/bin/bash.exe"
-			: "/bin/bash";
+		// Windows spawn — uses shared wrapper helper. See extensions/_lib/spawnPiWrapper.ts
+		// for full rationale (CVE-2024-27980 + cmd.exe reparse + bash markdown interpretation).
+		const cliFlags = [
+			"--mode", "json",
+			"-p",
+			"--no-extensions",
+			"--model", model,
+			"--tools", state.def.tools,
+			"--thinking", "off",
+			"--session", agentSessionFile.replace(/\\/g, "/"),
+		];
+		if (state.sessionFile) cliFlags.push("-c");
+
+		let spawnResult;
+		try {
+			spawnResult = spawnPiWrapper({
+				agentName: state.def.name,
+				promptContent: state.def.systemPrompt,
+				cliFlags,
+				injectAs: "append-system-prompt",
+				trailingArgs: [task],
+				onLog: logDbg,
+			});
+		} catch (e: any) {
+			logDbg(`SPAWN FAILED: ${e.message}`);
+			return Promise.resolve({
+				output: `dispatch_agent failed to spawn: ${e.message}`,
+				exitCode: 127,
+				elapsed: 0,
+			});
+		}
 
 		return new Promise((resolve) => {
-			const proc = spawn(bashPath, args, {
-				stdio: ["ignore", "pipe", "pipe"],
-				env: { ...process.env },
-			});
+			const proc = spawnResult.proc;
 
 			proc.on("error", (err: Error) => logDbg(`PROC ERROR: ${err.message}`));
 

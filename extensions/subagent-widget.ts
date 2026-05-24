@@ -16,11 +16,11 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-const { spawn } = require("child_process") as any;
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { applyExtensionDefaults } from "./themeMap.ts";
+import { spawnPiWrapper } from "./_lib/spawnPiWrapper.ts";
 
 interface SubState {
 	id: number;
@@ -138,38 +138,32 @@ export default function (pi: ExtensionAPI) {
 			? `${ctx.model.provider}/${ctx.model.id}`
 			: "openrouter/google/gemini-3-flash-preview";
 
-		// Windows fix: wrapper bash script (same pattern as agent-team.ts)
-		// shell:true cmd.exe/bash reparseiam args longos; spawn direto pi.cmd dá EINVAL (Node 18.20+).
-		// Solução: escrever prompt em arquivo + wrapper .sh que injeta via $(cat).
-		const ts = Date.now();
-		const tmpBase = os.tmpdir().replace(/\\/g, "/");
-		const promptFile = `${tmpBase}/pi-sub-prompt-${state.id}-${ts}.txt`;
-		const wrapperFile = `${tmpBase}/pi-sub-run-${state.id}-${ts}.sh`;
-		const sessionPathPosix = state.sessionFile.replace(/\\/g, "/");
-
-		fs.writeFileSync(promptFile, prompt, "utf-8");
-
-		const wrapper = `#!/bin/bash
-exec pi --mode json -p \\
-  --session '${sessionPathPosix}' \\
-  --no-extensions \\
-  --model '${model}' \\
-  --tools 'read,bash,grep,find,ls' \\
-  --thinking off \\
-  "$(cat '${promptFile}')"
-`;
-		fs.writeFileSync(wrapperFile, wrapper, { encoding: "utf-8", mode: 0o755 });
-
-		const bashPath = process.platform === "win32"
-			? "C:/Program Files/Git/bin/bash.exe"
-			: "/bin/bash";
+		// Windows spawn via shared helper — see extensions/_lib/spawnPiWrapper.ts
+		let spawnResult;
+		try {
+			spawnResult = spawnPiWrapper({
+				agentName: `sub${state.id}`,
+				promptContent: prompt,
+				cliFlags: [
+					"--mode", "json",
+					"-p",
+					"--session", state.sessionFile.replace(/\\/g, "/"),
+					"--no-extensions",
+					"--model", model,
+					"--tools", "read,bash,grep,find,ls",
+					"--thinking", "off",
+				],
+				injectAs: "message",
+			});
+		} catch (e: any) {
+			state.status = "error";
+			state.textChunks.push(`spawn failed: ${e.message}`);
+			updateWidgets();
+			return Promise.resolve();
+		}
 
 		return new Promise<void>((resolve) => {
-			const proc = spawn(bashPath, [wrapperFile], {
-				stdio: ["ignore", "pipe", "pipe"],
-				env: { ...process.env },
-			});
-
+			const proc = spawnResult.proc;
 			state.proc = proc;
 
 			const startTime = Date.now();
