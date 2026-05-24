@@ -69,7 +69,8 @@ function parseChainYaml(raw: string): ChainDef[] {
 	let current: ChainDef | null = null;
 	let currentStep: ChainStep | null = null;
 
-	for (const line of raw.split("\n")) {
+	// Normalize CRLF (Windows) to LF so regex anchors work
+	for (const line of raw.replace(/\r\n/g, "\n").split("\n")) {
 		// Chain name: top-level key
 		const chainMatch = line.match(/^(\S[^:]*):$/);
 		if (chainMatch) {
