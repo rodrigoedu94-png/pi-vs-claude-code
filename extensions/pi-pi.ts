@@ -18,10 +18,10 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { spawn } from "child_process";
 import { readdirSync, readFileSync, existsSync, mkdirSync } from "fs";
 import { join, resolve } from "path";
 import { applyExtensionDefaults } from "./themeMap.ts";
+import { spawnPiWrapper } from "./_lib/spawnPiWrapper.ts";
 
 // ── Types ────────────────────────────────────────
 
@@ -276,7 +276,7 @@ export default function (pi: ExtensionAPI) {
 			? `${ctx.model.provider}/${ctx.model.id}`
 			: "openrouter/google/gemini-3-flash-preview";
 
-		const args = [
+		const cliFlags = [
 			"--mode", "json",
 			"-p",
 			"--no-session",
@@ -284,17 +284,26 @@ export default function (pi: ExtensionAPI) {
 			"--model", model,
 			"--tools", state.def.tools,
 			"--thinking", "off",
-			"--append-system-prompt", state.def.systemPrompt,
-			question,
 		];
 
 		const textChunks: string[] = [];
 
-		return new Promise((resolve) => {
-			const proc = spawn("pi", args, {
-				stdio: ["ignore", "pipe", "pipe"],
-				env: { ...process.env },
+		// Windows spawn via shared helper — see extensions/_lib/spawnPiWrapper.ts
+		let spawnResult;
+		try {
+			spawnResult = spawnPiWrapper({
+				agentName: `expert-${state.def.name}`,
+				promptContent: state.def.systemPrompt,
+				cliFlags,
+				injectAs: "append-system-prompt",
+				trailingArgs: [question],
 			});
+		} catch (e: any) {
+			return Promise.resolve({ output: `expert spawn failed: ${e.message}`, exitCode: 127, elapsed: 0 });
+		}
+
+		return new Promise((resolve) => {
+			const proc = spawnResult.proc;
 
 			let buffer = "";
 
