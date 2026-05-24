@@ -1,8 +1,6 @@
 ---
 description: Creates a concise engineering implementation plan based on user requirements and saves it to specs directory
-argument-hint: [user prompt] [orchestration prompt]
-model: opus
-disallowed-tools: Task, EnterPlanMode
+argument-hint: "[user prompt] [orchestration prompt]"
 ---
 
 # Plan With Team

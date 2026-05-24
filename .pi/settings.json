@@ -1,6 +1,17 @@
 {
+  "projectName": "MedLegal-Pi (on PI CLAUDE base)",
   "theme": "synthwave",
   "prompts": [
-    "../.claude/commands"
+    "../.claude/commands",
+    "./.pi/prompts"
+  ],
+  "defaultProvider": "google",
+  "defaultModel": "google/gemini-3.1-flash-lite",
+  "models": [
+    "google/gemini-3.1-flash-lite",
+    "google/gemini-2.5-flash",
+    "google/gemini-3.5-flash",
+    "google/gemini-3-flash-preview",
+    "google/gemini-flash-latest"
   ]
 }
