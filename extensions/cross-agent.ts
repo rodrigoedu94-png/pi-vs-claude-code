@@ -53,6 +53,8 @@ interface SourceGroup {
 }
 
 function parseFrontmatter(raw: string): { description: string; body: string; fields: Record<string, string> } {
+	// Normalize CRLF (Windows) to LF so the frontmatter regex anchors work
+	raw = raw.replace(/\r\n/g, "\n");
 	const match = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
 	if (!match) return { description: "", body: raw, fields: {} };
 

@@ -51,7 +51,8 @@ function displayName(name: string): string {
 
 function parseAgentFile(filePath: string): ExpertDef | null {
 	try {
-		const raw = readFileSync(filePath, "utf-8");
+		// Normalize CRLF (Windows) to LF so the frontmatter regex anchors work
+		const raw = readFileSync(filePath, "utf-8").replace(/\r\n/g, "\n");
 		const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 		if (!match) return null;
 
