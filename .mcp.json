@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "obsidian-mcp"],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "C:/Projetos de IA/Estudo de Medicina Legal IA/Estudo de Medicina Legal"
+      }
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:/Projetos de IA/Estudo de Medicina Legal IA"
+      ]
+    }
+  }
+}
