@@ -21,8 +21,9 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Text, type AutocompleteItem, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { spawn } from "child_process";
-import { readdirSync, readFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
+import { readdirSync, readFileSync, existsSync, mkdirSync, unlinkSync, appendFileSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
+import { tmpdir } from "os";
 import { applyExtensionDefaults } from "./themeMap.ts";
 
 // ── Types ────────────────────────────────────────
@@ -33,6 +34,7 @@ interface AgentDef {
 	tools: string;
 	systemPrompt: string;
 	file: string;
+	model?: string;   // optional per-agent model override (from .md frontmatter)
 }
 
 interface AgentState {
@@ -98,6 +100,7 @@ function parseAgentFile(filePath: string): AgentDef | null {
 			tools: frontmatter.tools || "read,grep,find,ls",
 			systemPrompt: match[2].trim(),
 			file: filePath,
+			model: frontmatter.model || undefined,
 		};
 	} catch {
 		return null;
@@ -343,32 +346,59 @@ export default function (pi: ExtensionAPI) {
 		const agentKey = state.def.name.toLowerCase().replace(/\s+/g, "-");
 		const agentSessionFile = join(sessionDir, `${agentKey}.json`);
 
-		// Build args — first run creates session, subsequent runs resume
-		const args = [
-			"--mode", "json",
-			"-p",
-			"--no-extensions",
-			"--model", model,
-			"--tools", state.def.tools,
-			"--thinking", "off",
-			"--append-system-prompt", state.def.systemPrompt,
-			"--session", agentSessionFile,
-		];
+		// Windows fix v3: wrapper bash script
+		// Problema: Node 18.20+ requer shell:true para .cmd (CVE-2024-27980),
+		// mas shell:true reparseia args longos (--append-system-prompt) quebrando markdown.
+		// Solução: escrever system prompt em arquivo + wrapper .sh que lê via $(cat),
+		// spawn o wrapper via bash com args mínimos (sem chars problemáticos).
+		const ts = Date.now();
+		const tmpBase = require("os").tmpdir().replace(/\\/g, "/");
+		const spFile = `${tmpBase}/pi-sp-${state.def.name}-${ts}.md`;
+		const wrapperFile = `${tmpBase}/pi-run-${state.def.name}-${ts}.sh`;
+		const sessionPathPosix = agentSessionFile.replace(/\\/g, "/");
 
-		// Continue existing session if we have one
-		if (state.sessionFile) {
-			args.push("-c");
-		}
+		writeFileSync(spFile, state.def.systemPrompt, "utf-8");
 
-		args.push(task);
+		// Escape task pra single-quote bash: ' -> '\''
+		const escTask = task.replace(/'/g, "'\\''");
+		const continueFlag = state.sessionFile ? "-c" : "";
+
+		const wrapper = `#!/bin/bash
+exec pi --mode json -p --no-extensions \\
+  --model '${model}' \\
+  --tools '${state.def.tools}' \\
+  --thinking off \\
+  --append-system-prompt "$(cat '${spFile}')" \\
+  --session '${sessionPathPosix}' ${continueFlag} \\
+  '${escTask}'
+`;
+		writeFileSync(wrapperFile, wrapper, { encoding: "utf-8", mode: 0o755 });
+
+		const args = [wrapperFile];
 
 		const textChunks: string[] = [];
 
+		const DEBUG_LOG = join(process.cwd(), ".pi", "agent-team-debug.log");
+		const logDbg = (msg: string) => {
+			try {
+				appendFileSync(DEBUG_LOG, `[${new Date().toISOString()}] ${state.def.name}: ${msg}\n`);
+			} catch {}
+		};
+		logDbg(`SPAWN args: ${JSON.stringify(args)}`);
+
+		// Spawn bash com o wrapper. bash resolve pi.cmd via PATH e o wrapper
+		// usa $(cat file) pra injetar system prompt sem reparse.
+		const bashPath = process.platform === "win32"
+			? "C:/Program Files/Git/bin/bash.exe"
+			: "/bin/bash";
+
 		return new Promise((resolve) => {
-			const proc = spawn("pi", args, {
+			const proc = spawn(bashPath, args, {
 				stdio: ["ignore", "pipe", "pipe"],
 				env: { ...process.env },
 			});
+
+			proc.on("error", (err: Error) => logDbg(`PROC ERROR: ${err.message}`));
 
 			let buffer = "";
 
@@ -412,9 +442,10 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			proc.stderr!.setEncoding("utf-8");
-			proc.stderr!.on("data", () => {});
+			proc.stderr!.on("data", (data: string) => logDbg(`STDERR: ${data}`));
 
 			proc.on("close", (code) => {
+				logDbg(`CLOSE code=${code} buffer_len=${buffer.length}`);
 				if (buffer.trim()) {
 					try {
 						const event = JSON.parse(buffer);

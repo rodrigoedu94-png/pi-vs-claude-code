@@ -151,6 +151,7 @@ export default function (pi: ExtensionAPI) {
 			], {
 				stdio: ["ignore", "pipe", "pipe"],
 				env: { ...process.env },
+				shell: true,   // Windows: needed to resolve pi.cmd
 			});
 
 			state.proc = proc;
