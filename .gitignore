@@ -21,13 +21,18 @@ __pycache__/
 
 tmp/
 
-# Firebase Data Connect + Genkit contamination
-# (firebase init / genkit init accidentally ran in this cwd)
+# Firebase / Genkit / Xcode contamination
+# (firebase init / genkit init / Firebase Studio accidentally ran in this cwd)
 .firebase/
 .firebaserc
+firebase.json
 .agents/
+dataconnect/
 src/dataconnect-generated/
+skills-lock.json
 .claude/skills/firebase-*
-.claude/skills/firebase-security-rules-auditor/
+.claude/skills/developing-genkit-*
+.claude/skills/xcode-*
 .pi/skills/firebase-*
 .pi/skills/developing-genkit-*
+.pi/skills/xcode-*
