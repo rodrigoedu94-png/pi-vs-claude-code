@@ -138,20 +138,36 @@ export default function (pi: ExtensionAPI) {
 			? `${ctx.model.provider}/${ctx.model.id}`
 			: "openrouter/google/gemini-3-flash-preview";
 
+		// Windows fix: wrapper bash script (same pattern as agent-team.ts)
+		// shell:true cmd.exe/bash reparseiam args longos; spawn direto pi.cmd dá EINVAL (Node 18.20+).
+		// Solução: escrever prompt em arquivo + wrapper .sh que injeta via $(cat).
+		const ts = Date.now();
+		const tmpBase = os.tmpdir().replace(/\\/g, "/");
+		const promptFile = `${tmpBase}/pi-sub-prompt-${state.id}-${ts}.txt`;
+		const wrapperFile = `${tmpBase}/pi-sub-run-${state.id}-${ts}.sh`;
+		const sessionPathPosix = state.sessionFile.replace(/\\/g, "/");
+
+		fs.writeFileSync(promptFile, prompt, "utf-8");
+
+		const wrapper = `#!/bin/bash
+exec pi --mode json -p \\
+  --session '${sessionPathPosix}' \\
+  --no-extensions \\
+  --model '${model}' \\
+  --tools 'read,bash,grep,find,ls' \\
+  --thinking off \\
+  "$(cat '${promptFile}')"
+`;
+		fs.writeFileSync(wrapperFile, wrapper, { encoding: "utf-8", mode: 0o755 });
+
+		const bashPath = process.platform === "win32"
+			? "C:/Program Files/Git/bin/bash.exe"
+			: "/bin/bash";
+
 		return new Promise<void>((resolve) => {
-			const proc = spawn("pi", [
-				"--mode", "json",
-				"-p",
-				"--session", state.sessionFile,   // persistent session for /subcont resumption
-				"--no-extensions",
-				"--model", model,
-				"--tools", "read,bash,grep,find,ls",
-				"--thinking", "off",
-				prompt,
-			], {
+			const proc = spawn(bashPath, [wrapperFile], {
 				stdio: ["ignore", "pipe", "pipe"],
 				env: { ...process.env },
-				shell: true,   // Windows: needed to resolve pi.cmd
 			});
 
 			state.proc = proc;
