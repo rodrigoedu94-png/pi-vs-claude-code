@@ -9,7 +9,10 @@ __pycache__/
 .env
 
 .pi/agent-sessions/
-
+.pi/agent-team-debug.log
+.pi/agent-team-stderr.log
+*.bak
+*.bak.*
 
 .playwright-cli/
 
