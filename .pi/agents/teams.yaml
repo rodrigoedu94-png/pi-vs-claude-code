@@ -1,31 +1,34 @@
+medlegal-autores:
+  - franca
+  - hercules
+  - palermo
+  - forensic-expert
+
+medlegal-notas:
+  - forensic-expert
+  - note-architect
+  - verifier
+  - flashcard-generator
+
+medlegal-banca:
+  - question-pattern-analyst
+  - franca
+  - hercules
+  - palermo
+
+vault:
+  - vault-auditor
+  - note-architect
+  - summary-writer
+
 full:
-  - scout
-  - planner
-  - builder
-  - reviewer
-  - documenter
-  - red-team
-
-plan-build:
-  - planner
-  - builder
-  - reviewer
-
-info:
-  - scout
-  - documenter
-  - reviewer
-
-frontend:
-  - planner
-  - builder
-  - bowser
-
-pi-pi:
-  - ext-expert
-  - theme-expert
-  - skill-expert
-  - config-expert
-  - tui-expert
-  - prompt-expert
-  - agent-expert
+  - forensic-expert
+  - franca
+  - hercules
+  - palermo
+  - note-architect
+  - verifier
+  - summary-writer
+  - flashcard-generator
+  - question-pattern-analyst
+  - vault-auditor
