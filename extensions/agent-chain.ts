@@ -24,9 +24,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { spawn } from "child_process";
 import { readFileSync, existsSync, readdirSync, mkdirSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
+import { spawnPiWrapper } from "./_lib/spawnPiWrapper.ts";
 import { applyExtensionDefaults } from "./themeMap.ts";
 
 // ── Types ────────────────────────────────────────
@@ -342,32 +342,37 @@ export default function (pi: ExtensionAPI) {
 		const agentSessionFile = join(sessionDir, `chain-${agentKey}.json`);
 		const hasSession = agentSessions.get(agentKey);
 
-		const args = [
+		const cliFlags = [
 			"--mode", "json",
 			"-p",
 			"--no-extensions",
 			"--model", model,
 			"--tools", agentDef.tools,
 			"--thinking", "off",
-			"--append-system-prompt", agentDef.systemPrompt,
-			"--session", agentSessionFile,
+			"--session", agentSessionFile.replace(/\\/g, "/"),
 		];
-
-		if (hasSession) {
-			args.push("-c");
-		}
-
-		args.push(task);
+		if (hasSession) cliFlags.push("-c");
 
 		const textChunks: string[] = [];
 		const startTime = Date.now();
 		const state = stepStates[stepIndex];
 
-		return new Promise((resolve) => {
-			const proc = spawn("pi", args, {
-				stdio: ["ignore", "pipe", "pipe"],
-				env: { ...process.env },
+		// Windows spawn via shared helper — see extensions/_lib/spawnPiWrapper.ts
+		let spawnResult;
+		try {
+			spawnResult = spawnPiWrapper({
+				agentName: `chain-${agentKey}`,
+				promptContent: agentDef.systemPrompt,
+				cliFlags,
+				injectAs: "append-system-prompt",
+				trailingArgs: [task],
 			});
+		} catch (e: any) {
+			return Promise.resolve({ output: `chain step failed to spawn: ${e.message}`, exitCode: 127, elapsed: 0 });
+		}
+
+		return new Promise((resolve) => {
+			const proc = spawnResult.proc;
 
 			const timer = setInterval(() => {
 				state.elapsed = Date.now() - startTime;
