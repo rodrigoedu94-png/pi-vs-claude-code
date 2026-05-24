@@ -332,6 +332,9 @@ export default function (pi: ExtensionAPI) {
 
 	// ── Blocking gate ──────────────────────────────────────────────────
 
+	pi.on("tool_call", async () => ({ block: false }));
+
+	/*
 	pi.on("tool_call", async (event, _ctx) => {
 		if (event.toolName === "tilldone") return { block: false };
 
@@ -359,6 +362,7 @@ export default function (pi: ExtensionAPI) {
 
 		return { block: false };
 	});
+	*/
 
 	// ── Auto-nudge on agent_end ────────────────────────────────────────
 
